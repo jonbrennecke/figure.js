@@ -1,15 +1,32 @@
+/**
+ *
+ * Basic plotting abstraction with d3
+ *
+ *
+ *
+ * WARNING: this utility is a work in progress and shouldn't be used in production yet
+ *
+ *
+ * @author jonbrennecke
+ * @link github.com/jonbrennecke/figure.js
+ * @package figure.js
+ *
+ *
+ */
+
 (function ( mod ) {
 
-	if ( typeof module === "object" && typeof module.exports === "object" ) // CommonJS, Node
-		module.exports = mod(window.$,window.d3);
-	else
-		throw "This module is only supported on Node.js.";
+	// @todo detect other module loaders
 
-}(function ($,d3) {
+	// normal browser environment
+	window.figurejs = mod($,d3);
+		
 
-	var figurejs = figurejs || { meta : "figurejs version 0.0.1" };
+}(function ( $, d3 ) {
 
-	// TODO also check for typed Arrays
+	var figurejs = figurejs || { meta : "figurejs namespace" };
+
+	// @todo also check for typed Arrays
 	figurejs.isArray = function ( array ) {
 		return Object.prototype.toString.call( array ) == '[object Array]';
 	}
@@ -18,30 +35,33 @@
 	 *
 	 * Figure
 	 *
-	 * :param selector = (string) selector for the DOM (SVG) element on which to append the plot
+	 * Main figure object
+	 *
+	 * @param selector = (string) selector for the DOM (SVG) element on which to append the plot
 	 *
 	 */
 	figurejs.Figure = function ( selector ) {
+
 		this.selector = selector;
 		this.svg = d3.select(this.selector);
 		this.$element = $(selector);
-
+		this._axes = true;
 		this.width = this.$element.parent().width();
 		this.height = this.$element.parent().height();
 		this.margins = {
-			top: 20,
-			right: 20,
-			bottom: 20,
-			left: 50
+			top: 0,
+			right: 0,
+			bottom: 0,
+			left: 0
 		};
 
 		this.$element
 			.width(this.width)
 			.height(this.height);
 
-		this.subElements = [];
+		$(window).resize(this.resize.bind(this));
 
-		// TODO most everything that goes below this should be in the axes object *************
+		this.subElements = [];
 
 		// axis ranges
 		this.xRange = d3.scale
@@ -52,7 +72,7 @@
 			.linear()
 			.range([this.height - this.margins.top, this.margins.bottom])
 
-		// axis appearance
+		// axis objects
 		this.xAxis = d3.svg
 			.axis()
 			.scale(this.xRange)
@@ -66,6 +86,7 @@
 			.orient("left")
 			.tickSubdivide(true);
 
+		// axis svg elements
 		this.xAxisSVG = this.svg.append("svg:g")
 			.attr("class", "x axis")
 			.attr("transform", "translate(0," + (this.height - this.margins.bottom) + ")")
@@ -80,7 +101,35 @@
 
 	figurejs.Figure.prototype = {
 
-		// clears lines from the figure; does not clear axes
+		/**
+		 * 
+		 * getter/setter methods to turn axes on or off
+		 *
+		 */
+
+		get axes () {
+			return this._axes;
+		},
+
+		set axes ( bool ) {
+			this._axes = bool;
+
+			// remove axes from figure
+			if ( ! bool ) {
+				this.yAxisSVG.remove();
+				this.xAxisSVG.remove();
+			}
+		},
+
+		/**
+		 * 
+		 * Clear the figure
+		 *
+		 * Clears lines from the figure; does not clear axes
+		 *
+		 * @todo clear axes as well
+		 *
+		 */
 		clear : function () {
 			while ( this.subElements.length ) {
 				var element = this.subElements.pop();
@@ -88,14 +137,23 @@
 			}
 		},
 
+		/**
+		 *
+		 * Plot the figureElement
+		 *
+		 *
+		 * @todo check for function implementation before calling element.appendTo
+		 *
+		 */
 		plot : function ( figureElement ) {
 			figureElement.appendTo(this);
 		},
 
-		axes : function ( axes ) {
-			axes.appendTo(this);
-		},
-
+		/**
+		 *
+		 * Update the figure
+		 *
+		 */
 		update : function () {
 			this.yAxis.scale(this.yRange);
 			this.xAxis.scale(this.xRange);
@@ -103,6 +161,11 @@
 			this.xAxisSVG.call(this.xAxis);
 		},
 
+		/**
+		 *
+		 * Resize the figure
+		 *
+		 */
 		resize : function ( event ) {
 
 			this.width = this.$element.parent().width();
@@ -128,21 +191,6 @@
 	};
 
 
-
-	/**
-	 *
-	 * FigureElement base class **************** TODO
-	 *
-	 */
-	figurejs.FigureElement = function () {
-
-	};
-
-	figurejs.FigureElement.prototype = {
-		appendTo : function ( figure ) {
-			// this should be extended in subclasses ***************************
-		}
-	};
 
 	/**
 	 *
@@ -182,99 +230,83 @@
 		this.__area = false;
 		this.lineFunc = d3.svg.line();
 		this.areaFunc = d3.svg.area();
-
-		figurejs.FigureElement.call(this);
-
 	};
-	figurejs.Line.prototype = Object.create( figurejs.FigureElement.prototype );
 
-	figurejs.Line.prototype.appendTo = function ( figure ) {
+	figurejs.Line.prototype = {
 
-		this.figure = figure;
 
-		figure.yRange.domain([ this.min.y, this.max.y ]);
-		figure.xRange.domain([ this.min.x, this.max.x ]);
+		appendTo: function ( figure ) {
 
-		this.lineFunc
-			.x(function (d) { return figure.xRange(d[0]); })
-			.y(function (d) { return figure.yRange(d[1]); })
-			.interpolate('basis');
+			this.figure = figure;
 
-		// if enabled, display filled area under the curve
-		if ( this.__area ) {
-			this.areaFunc
+			figure.yRange.domain([ this.min.y, this.max.y ]);
+			figure.xRange.domain([ this.min.x, this.max.x ]);
+
+			this.lineFunc
 				.x(function (d) { return figure.xRange(d[0]); })
 				.y(function (d) { return figure.yRange(d[1]); })
-				.y0(figure.height - figure.margins.bottom)
 				.interpolate('basis');
 
-			this.svgArea = figure.svg
+			// if enabled, display filled area under the curve
+			if ( this.__area ) {
+				this.areaFunc
+					.x(function (d) { return figure.xRange(d[0]); })
+					.y(function (d) { return figure.yRange(d[1]); })
+					.y0(figure.height - figure.margins.bottom)
+					.interpolate('basis');
+
+				this.svgArea = figure.svg
+					.append("svg:path")
+					.attr("class", "area-plot")
+					.attr("d", this.areaFunc(this.pts));
+			}
+
+			this.svgLine = figure.svg
 				.append("svg:path")
-				.attr("class", "area-plot")
-				.attr("d", this.areaFunc(this.pts));
-		}
+				.attr("class", "line-plot")
+				.attr("d", this.lineFunc(this.pts))
 
-		this.svgLine = figure.svg
-			.append("svg:path")
-			.attr("class", "line-plot")
-			.attr("d", this.lineFunc(this.pts))
+			figure.subElements.push(this);
+			figure.update();
+		},
 
-		figure.subElements.push(this);
-		figure.update();
-	}
+		resize: function ( event ) {
 
-	figurejs.Line.prototype.resize = function ( event ) {
-
-		this.lineFunc
-			.x(function (d) { return this.figure.xRange(d[0]); })
-			.y(function (d) { return this.figure.yRange(d[1]); })
-
-		this.svgLine.attr('d',this.lineFunc(this.pts));
-
-		if ( this.__area ) {
-			this.areaFunc
+			this.lineFunc
 				.x(function (d) { return this.figure.xRange(d[0]); })
 				.y(function (d) { return this.figure.yRange(d[1]); })
-				.y0(this.figure.height - this.figure.margins.bottom)
 
-			this.svgArea.attr('d',this.areaFunc(this.pts));
+			this.svgLine.attr('d',this.lineFunc(this.pts));
+
+			if ( this.__area ) {
+				this.areaFunc
+					.x(function (d) { return this.figure.xRange(d[0]); })
+					.y(function (d) { return this.figure.yRange(d[1]); })
+					.y0(this.figure.height - this.figure.margins.bottom)
+
+				this.svgArea.attr('d',this.areaFunc(this.pts));
+			}
+		},
+
+		area: function ( bool ) {
+			if ( bool || typeof bool == "undefined" ) { // enable area
+				this.__area = true;
+			}
+			else { // disable area
+				this.__area = false;
+			}
+		},
+
+		clear: function () {
+			if ( this.__area ) {
+				$(this.svgArea[0]).remove();
+			}
+			$(this.svgLine[0]).remove();
 		}
-	}
-
-
-	figurejs.Line.prototype.area = function ( bool ) {
-
-		if ( bool || typeof bool == "undefined" ) { // enable area
-			this.__area = true;
-		}
-		else { // disable area
-			this.__area = false;
-		}
-
-	}
-
-	figurejs.Line.prototype.clear = function () {
-		if ( this.__area ) {
-			$(this.svgArea[0]).remove();
-		}
-		$(this.svgLine[0]).remove();
-	}
-
-
-	/**
-	 *
-	 * Axes
-	 *
-	 * inherits from FigureElement
-	 *
-	 */
-	figurejs.Axes = function () {
-
-
-		figurejs.FigureElement.call(this);
 
 	};
-	figurejs.Axes.prototype = Object.create( figurejs.FigureElement.prototype );
+
+
 
 	return figurejs;
 
